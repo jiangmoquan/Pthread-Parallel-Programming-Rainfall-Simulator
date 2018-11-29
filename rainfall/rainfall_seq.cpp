@@ -6,7 +6,7 @@
 #include <vector>
 #include <sstream>
 
-using namespace std
+using namespace std;
 
 class SequencialRainfallSimulator {
 private:
@@ -39,6 +39,7 @@ public:
       		cout << e.what() << endl;
       		return false;
     	}
+	return false;
 	}
 
 	bool ReadFile() {
@@ -75,7 +76,7 @@ public:
 
 
 int main(int argc, char *argv[]) {
-	SequencialRainfallSimulator mysimulator();
+	SequencialRainfallSimulator mysimulator;
 	if (!mysimulator.Parse(argc, argv)) 
 		return 0;
 	if (!mysimulator.ReadFile()) 
