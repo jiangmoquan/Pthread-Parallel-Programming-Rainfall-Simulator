@@ -5,13 +5,15 @@
 #include <string>
 #include <vector>
 #include <sstream>
-
+#include <iomanip>
+#include <climits>
+#include <algorithm>
 using namespace std;
 
 class SequencialRainfallSimulator {
 private:
 	int total_time;
-	int absorb_rate;
+	double absorb_rate;
 	int land_size;
 	string file_name;
 	vector<vector<int> > dir = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
@@ -37,16 +39,23 @@ private:
 
 		cout << "Rainfall simulation completed in "  << curr_timestep << " time steps" << endl;
 		cout << "Runtime = " << elapsed_s << " seconds" << endl;
+		cout << endl;
 		cout << "The following grid shows the number of raindrops absorbed at each point: " << endl;
 		for (auto row : absorb_amount) {
 			for (auto value : row) {
-				cout << setw(6) << setprecision(6) << value;
+				cout << setw(8) << setprecision(6) << value;
 			}
 			cout << endl;
 		}
 	}
 
-
+	void PrintCurrentAmount() {
+		for (auto row: current_amount) {
+			for (auto value: row)
+				cout << value << " " ;
+			cout << endl;
+		}
+	}
 public:
 	bool Parse(int argc, char *argv[]) {
 		try {
@@ -54,17 +63,16 @@ public:
 				cout << "The number of arguments is wrong." << endl;
 				return false;
 			}
-    		total_time = stoi(argv[2]);
-    		absorb_rate = stod(argv[3]);
-    		land_size = stoi(argv[4]);
-    		file_name = argv[5];
-    		return true;
+			total_time = stoi(argv[2]);
+			absorb_rate = stod(argv[3]);
+			land_size = stoi(argv[4]);
+			file_name = argv[5];
+			return true;
   		}
   		catch (std::exception& e) {
-      		cout << e.what() << endl;
-      		return false;
-    	}
-	return false;
+			cout << e.what() << endl;
+			return false;
+		}
 	}
 
 	bool ReadFile() {
@@ -88,7 +96,7 @@ public:
     	current_amount.assign(land_size, vector<double>(land_size, 0.0));
     	absorb_amount.assign(land_size, vector<double>(land_size, 0.0));
     	
-    	trickle_off_dir.assign(land_size, vector< vector<int> >(land_size, vector<int>() ));
+    	trickle_off_dir.assign(land_size, vector< vector<int> >(land_size, vector<int>(0) ));
 
     	for (int i=0; i<land_size; i++) {
     		for (int j=0; j<land_size; j++) {
@@ -109,13 +117,14 @@ public:
     						trickle_off_dir[i][j].push_back(k);
     				}
     			}
+			//cout << i << " " << j << " " << trickle_off_dir[i][j].size() << endl;
     		}
     	}
     }
 
     void Simulate() {
-		struct timespec start_time, end_time;
-  		clock_gettime(CLOCK_MONOTONIC, &start_time);
+	struct timespec start_time, end_time;
+	clock_gettime(CLOCK_MONOTONIC, &start_time);
 
     	curr_timestep = 1;
     	while (true) {
@@ -128,12 +137,14 @@ public:
 
     				absorb_amount[i][j] += min(current_amount[i][j], absorb_rate);
     				current_amount[i][j] -= min(current_amount[i][j], absorb_rate);
-
-    				int trickle_off_amount = min(current_amount[i][j], 1.0);
-    				current_amount[i][j] -= trickle_off_amount;
-    				for (int k=0; k<trickle_off_dir[i][j].size(); k++) {
-    					trickle_in[i+dir[k][0]][j+dir[k][1]] += trickle_off_amount / (trickle_off_dir[i][j].size()*1.0);
-    				}
+				if (trickle_off_dir[i][j].size() > 0) {
+    					double trickle_off_amount = min(current_amount[i][j], 1.0);
+    					current_amount[i][j] -= trickle_off_amount;
+    					for (size_t k=0; k<trickle_off_dir[i][j].size(); k++) {
+    						trickle_in[i+dir[trickle_off_dir[i][j][k]][0]][j+dir[trickle_off_dir[i][j][k]][1]] += \
+						trickle_off_amount / (trickle_off_dir[i][j].size()*1.0);
+    					}
+				}
     			}
     		}
 
@@ -144,18 +155,14 @@ public:
     				if (current_amount[i][j] > 0.0) all_done = false;
     			}
     		}
-
+		
     		if (all_done) 
     			break;
-
     		curr_timestep++;
     	}
 
-		clock_gettime(CLOCK_MONOTONIC, &end_time);
-
-		PrintResult(start_time, end_time);
-
-
+	clock_gettime(CLOCK_MONOTONIC, &end_time);
+	PrintResult(start_time, end_time);
     }
 
 };
