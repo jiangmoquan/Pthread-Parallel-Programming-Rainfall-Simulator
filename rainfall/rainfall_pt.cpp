@@ -15,6 +15,8 @@ using namespace std;
 class ParallelRainfallSimulator {
 private:
 	int thread_num;
+	pthread_mutex_t** locks;
+
 	int total_time;
 	double absorb_rate;
 	int land_size;
@@ -23,9 +25,10 @@ private:
 	vector<vector<int> > landscape;
 	vector<vector<double> > current_amount;
 	vector<vector<double> > absorb_amount;
-	
+	vector<vector<double> > trickle_in;
 	vector< vector< vector<int> > > trickle_off_dir;
 	int curr_timestep;
+	bool all_done;
 
 	double calc_time(struct timespec start, struct timespec end) {
 		double start_sec = (double)start.tv_sec*1000000000.0 + (double)start.tv_nsec;
@@ -59,6 +62,9 @@ private:
 			cout << endl;
 		}
 	}
+
+
+
 public:
 	bool Parse(int argc, char *argv[]) {
 		try {
@@ -99,7 +105,8 @@ public:
 	void Preprocessing() {
 		current_amount.assign(land_size, vector<double>(land_size, 0.0));
 		absorb_amount.assign(land_size, vector<double>(land_size, 0.0));
-    	
+    	trickle_in.assign(land_size, vector<double>(land_size, 0.0));
+
 		trickle_off_dir.assign(land_size, vector< vector<int> >(land_size, vector<int>(0) ));
 		
 		for (int i=0; i<land_size; i++) {
@@ -126,40 +133,124 @@ public:
 		}
 	}
 
+
+	void CreateMutex() {
+		locks = (pthread_mutex_t**) malloc(land_size * sizeof(pthread_mutex_t*));
+		for(int i=0; i<land_size; i++)  
+			locks[i] = (pthread_mutex_t*) malloc(land_size * sizeof(pthread_mutex_t));
+		
+		for (int i = 0; i < land_size; i++) {
+			for (int j = 0; j<land_size; j++) {
+				pthread_mutex_init(&locks[i][j], NULL);
+			}
+		}
+	}
+
+
+	void* InitTrickleInHelper(void* arg) {
+		int id = *(int *)arg;
+		int start = id * (land_size / thread_num);
+		int end = (id + 1) * (land_size / thread_num);
+
+		for (int i=start; i<end; i++) {
+			for (int j=0; j<land_size; j++) {
+				trickle_in[i][j] = 0.0;
+			}
+		}
+	}
+
+	void InitTrickleIn() {
+		threads = (pthread_t *) malloc(thread_num * sizeof(pthread_t));
+		for (int i = 0; i < thread_num; i++) {    
+			int *id = (int *) malloc(sizeof(int));  
+			*id = i;    
+			pthread_create(&threads[i], NULL, InitTrickleInHelper, (void *)(id));  
+		}
+		for (int i = 0; i < thread_num; i++) {    
+			pthread_join(threads[i], NULL);  
+		}
+
+	}
+
+	void* FirstTraverseHelper(void* arg) {
+		int id = *(int *)arg;
+		int start = id * (land_size / thread_num);
+		int end = (id + 1) * (land_size / thread_num);
+
+    	for (int i=start; i<end; i++) {
+    		for (int j=0; j<land_size; j++) {
+    			if (curr_timestep <= total_time)
+    				current_amount[i][j] += 1.0;
+
+				absorb_amount[i][j] += min(current_amount[i][j], absorb_rate);
+				current_amount[i][j] -= min(current_amount[i][j], absorb_rate);
+				if (trickle_off_dir[i][j].size() > 0) {
+					double trickle_off_amount = min(current_amount[i][j], 1.0);
+					current_amount[i][j] -= trickle_off_amount;
+					for (size_t k=0; k<trickle_off_dir[i][j].size(); k++) {
+						pthread_mutex_lock(&locks[i+dir[trickle_off_dir[i][j][k]][0]][j+dir[trickle_off_dir[i][j][k]][1]]);
+						trickle_in[i+dir[trickle_off_dir[i][j][k]][0]][j+dir[trickle_off_dir[i][j][k]][1]] += \
+						trickle_off_amount / (trickle_off_dir[i][j].size()*1.0);
+						pthread_mutex_unlock(&locks[i+dir[trickle_off_dir[i][j][k]][0]][j+dir[trickle_off_dir[i][j][k]][1]]);
+					}
+				}
+			}
+		}
+	}
+
+
+	void FirstTraverse() {
+		threads = (pthread_t *) malloc(thread_num * sizeof(pthread_t));
+		for (int i = 0; i < thread_num; i++) {    
+			int *id = (int *) malloc(sizeof(int));  
+			*id = i;    
+			pthread_create(&threads[i], NULL, FirstTraverseHelper, (void *)(id));  
+		}
+		for (int i = 0; i < thread_num; i++) {    
+			pthread_join(threads[i], NULL);  
+		}
+	}
+
+	void* SecondTraverseHelper(void* arg) {
+		int id = *(int *)arg;
+		int start = id * (land_size / thread_num);
+		int end = (id + 1) * (land_size / thread_num);
+
+		for (int i=start; i<end; i++) {
+			for (int j=0; j<land_size; j++) {
+				current_amount[i][j] += trickle_in[i][j];
+				if (current_amount[i][j] > 0.0) all_done = false;
+			}
+		}
+	}
+
+	void SecondTraverse() {
+		threads = (pthread_t *) malloc(thread_num * sizeof(pthread_t));
+		for (int i = 0; i < thread_num; i++) {    
+			int *id = (int *) malloc(sizeof(int));  
+			*id = i;    
+			pthread_create(&threads[i], NULL, SecondTraverseHelper, (void *)(id));  
+		}
+		for (int i = 0; i < thread_num; i++) {    
+			pthread_join(threads[i], NULL);  
+		}
+
+	}
+
+
 	void Simulate() {
 		struct timespec start_time, end_time;
+
+		CreateMutex();
+
 		clock_gettime(CLOCK_MONOTONIC, &start_time);
 
     	curr_timestep = 1;
     	while (true) {
-    		vector<vector<double> > trickle_in (land_size, vector<double>(land_size, 0.0));
-
-    		for (int i=0; i<land_size; i++) {
-    			for (int j=0; j<land_size; j++) {
-    				if (curr_timestep <= total_time)
-    					current_amount[i][j] += 1.0;
-
-					absorb_amount[i][j] += min(current_amount[i][j], absorb_rate);
-					current_amount[i][j] -= min(current_amount[i][j], absorb_rate);
-					if (trickle_off_dir[i][j].size() > 0) {
-						double trickle_off_amount = min(current_amount[i][j], 1.0);
-						current_amount[i][j] -= trickle_off_amount;
-						for (size_t k=0; k<trickle_off_dir[i][j].size(); k++) {
-							trickle_in[i+dir[trickle_off_dir[i][j][k]][0]][j+dir[trickle_off_dir[i][j][k]][1]] += \
-							trickle_off_amount / (trickle_off_dir[i][j].size()*1.0);
-						}
-					}
-				}
-			}
-
-    		bool all_done = true;
-    		for (int i=0; i<land_size; i++) {
-    			for (int j=0; j<land_size; j++) {
-    				current_amount[i][j] += trickle_in[i][j];
-    				if (current_amount[i][j] > 0.0) all_done = false;
-    			}
-    		}
-		
+    		InitTrickleIn();
+    		FirstTraverse();
+			all_done = true;
+			SecondTraverse();
 			if (all_done && curr_timestep>total_time) break;
 			curr_timestep++;
 		}
@@ -167,8 +258,10 @@ public:
 		clock_gettime(CLOCK_MONOTONIC, &end_time);
 		PrintResult(start_time, end_time);
 	}
-
 };
+
+
+
 
 
 
