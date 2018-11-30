@@ -126,7 +126,6 @@ public:
 	void Simulate() {
 		struct timespec start_time, end_time;
 		clock_gettime(CLOCK_MONOTONIC, &start_time);
-
 		curr_timestep = 1;
 		while (true) {
 			vector<vector<double> > trickle_in (land_size, vector<double>(land_size, 0.0));
