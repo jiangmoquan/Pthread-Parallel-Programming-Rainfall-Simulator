@@ -12,8 +12,6 @@
 
 using namespace std;
 
-class ParallelRainfallSimulator {
-private:
 	int thread_num;
 	pthread_mutex_t** locks;
 
@@ -64,8 +62,6 @@ private:
 	}
 
 
-
-public:
 	bool Parse(int argc, char *argv[]) {
 		try {
 			if (argc != 6) {
@@ -147,7 +143,7 @@ public:
 	}
 
 
-	void* InitTrickleInHelper(void* arg) {
+	 void* InitTrickleInHelper(void* arg) {
 		int id = *(int *)arg;
 		int start = id * (land_size / thread_num);
 		int end = (id + 1) * (land_size / thread_num);
@@ -157,10 +153,11 @@ public:
 				trickle_in[i][j] = 0.0;
 			}
 		}
+		return NULL;
 	}
 
 	void InitTrickleIn() {
-		threads = (pthread_t *) malloc(thread_num * sizeof(pthread_t));
+		pthread_t* threads = (pthread_t *) malloc(thread_num * sizeof(pthread_t));
 		for (int i = 0; i < thread_num; i++) {    
 			int *id = (int *) malloc(sizeof(int));  
 			*id = i;    
@@ -196,11 +193,12 @@ public:
 				}
 			}
 		}
+		return NULL;
 	}
 
 
 	void FirstTraverse() {
-		threads = (pthread_t *) malloc(thread_num * sizeof(pthread_t));
+		pthread_t* threads = (pthread_t *) malloc(thread_num * sizeof(pthread_t));
 		for (int i = 0; i < thread_num; i++) {    
 			int *id = (int *) malloc(sizeof(int));  
 			*id = i;    
@@ -222,10 +220,11 @@ public:
 				if (current_amount[i][j] > 0.0) all_done = false;
 			}
 		}
+		return NULL;
 	}
 
 	void SecondTraverse() {
-		threads = (pthread_t *) malloc(thread_num * sizeof(pthread_t));
+		pthread_t* threads = (pthread_t *) malloc(thread_num * sizeof(pthread_t));
 		for (int i = 0; i < thread_num; i++) {    
 			int *id = (int *) malloc(sizeof(int));  
 			*id = i;    
@@ -258,7 +257,6 @@ public:
 		clock_gettime(CLOCK_MONOTONIC, &end_time);
 		PrintResult(start_time, end_time);
 	}
-};
 
 
 
@@ -266,13 +264,12 @@ public:
 
 
 int main(int argc, char *argv[]) {
-	ParallelRainfallSimulator mysimulator;
-	if (!mysimulator.Parse(argc, argv)) 
+	if (!Parse(argc, argv)) 
 		return 0;
-	if (!mysimulator.ReadFile()) 
+	if (!ReadFile()) 
 		return 0;
-	mysimulator.Preprocessing();
-	mysimulator.Simulate();
+	Preprocessing();
+	Simulate();
 
 	return 0;
 }
